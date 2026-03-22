@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 
 PATTERNS = {
@@ -18,11 +19,11 @@ PATTERNS = {
         r"DATE\s+TO\s+SHIP\s+TO\s*\n.*?\b([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\b",
     ],
     "due_date": [
-    r"ORDER\s+DATE\s+ORDER\s+NUMBER\s+DUE\s+DATE\s*\n[0-9./-]+\s+\S+\s+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
-    r"DUE[-\s]*DATE[:\s]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
-    r"DUE[-\s]*DATE[:\s]*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
-    r"TOTAL\s+DUE\s+BY[:\s]*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
-],
+        r"ORDER\s+DATE\s+ORDER\s+NUMBER\s+DUE\s+DATE\s*\n[0-9./-]+\s+\S+\s+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
+        r"DUE[-\s]*DATE[:\s]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
+        r"DUE[-\s]*DATE[:\s]*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
+        r"TOTAL\s+DUE\s+BY[:\s]*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
+    ],
     "subtotal": [
         r"SUBTOTAL[:\s$]*([\d,]+(?:\.\d{2})?)",
     ],
@@ -41,6 +42,27 @@ PATTERNS = {
 }
 
 
+def normalize_date(date_value: str | None) -> str | None:
+    """Convert supported date formats to YYYY-MM-DD."""
+    if not date_value:
+        return None
+
+    formats = [
+        "%d.%m.%Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%B %d, %Y",
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_value, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+    return date_value
+
+
 def parse_fields(text: str, patterns: dict) -> dict:
     """Extract structured fields from text using multiple regex patterns."""
     result = {}
@@ -53,5 +75,8 @@ def parse_fields(text: str, patterns: dict) -> dict:
             if match:
                 result[field] = match.group(1).strip()
                 break
+
+    result["date"] = normalize_date(result.get("date"))
+    result["due_date"] = normalize_date(result.get("due_date"))
 
     return result
