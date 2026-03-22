@@ -7,7 +7,7 @@ def extract_from_pdf(path: str) -> tuple[str, list]:
     all_tables = []
 
     with pdfplumber.open(path) as pdf:
-        print(f"Total pages: {len(pdf.pages)}")
+        # print(f"Total pages: {len(pdf.pages)}")
 
         for page in pdf.pages:
             text = page.extract_text()
