@@ -14,8 +14,9 @@ PATTERNS = {
         r"DATE[:\s]*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
         r"INVOICE\s+DATE[:\s]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
         r"INVOICE\s+DATE[:\s]*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
-        r"INVOICE\s+NO\.?.*?\n\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
-        r"INVOICE\s*#.*?\n\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
+        # Note: these two use MULTILINE only (not DOTALL) to avoid cross-page matches
+        r"INVOICE\s+NO\.?[^\n]*\n\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
+        r"INVOICE\s*#[^\n]*\n\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",
         r"DATE\s+TO\s+SHIP\s+TO\s*\n.*?\b([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\b",
     ],
     "due_date": [
@@ -41,25 +42,39 @@ PATTERNS = {
     ],
 }
 
+# Date formats tried in order. The US format (MM/DD/YYYY) is added after the
+# European ambiguous formats so that DD/MM/YYYY is attempted first for dates
+# where both interpretations are valid (e.g. 01/06). For unambiguous US dates
+# like 13/01 or month > 12, US_FALLBACK kicks in.
+_DATE_FORMATS = [
+    ("%d.%m.%Y", "DD.MM.YYYY"),
+    ("%d/%m/%Y", "DD/MM/YYYY"),
+    ("%d-%m-%Y", "DD-MM-YYYY"),
+    ("%B %d, %Y", "Month DD, YYYY"),
+    ("%m/%d/%Y", "MM/DD/YYYY"),  # US format — tried after European
+    ("%m-%d-%Y", "MM-DD-YYYY"),
+    ("%m.%d.%Y", "MM.DD.YYYY"),
+    ("%Y-%m-%d", "YYYY-MM-DD"),  # ISO — already normalised, pass-through
+]
+
 
 def normalize_date(date_value: str | None) -> str | None:
-    """Convert supported date formats to YYYY-MM-DD."""
+    """
+    Convert supported date string formats to YYYY-MM-DD.
+
+    Returns the original string unchanged (not None) if no format matches,
+    so callers can detect that the value exists but couldn't be parsed cleanly.
+    """
     if not date_value:
         return None
 
-    formats = [
-        "%d.%m.%Y",
-        "%d/%m/%Y",
-        "%d-%m-%Y",
-        "%B %d, %Y",
-    ]
-
-    for fmt in formats:
+    for fmt, _ in _DATE_FORMATS:
         try:
-            return datetime.strptime(date_value, fmt).strftime("%Y-%m-%d")
+            return datetime.strptime(date_value.strip(), fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
 
+    # Return raw value rather than silently dropping it.
     return date_value
 
 
@@ -71,7 +86,10 @@ def parse_fields(text: str, patterns: dict) -> dict:
         result[field] = None
 
         for pattern in pattern_list:
-            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            # Use MULTILINE instead of DOTALL for patterns that should not
+            # bleed across page boundaries.
+            flags = re.IGNORECASE | re.MULTILINE
+            match = re.search(pattern, text, flags)
             if match:
                 result[field] = match.group(1).strip()
                 break
