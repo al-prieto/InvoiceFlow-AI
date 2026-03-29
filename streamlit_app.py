@@ -84,7 +84,7 @@ def inject_css() -> None:
             /* Process button */
             .stButton > button {
                 width: 100%;
-                height: 3.2rem;
+                height: 3.5rem;
                 border-radius: 12px;
                 border: none;
                 background: #4c7ef3;
@@ -92,9 +92,17 @@ def inject_css() -> None:
                 font-family: 'DM Sans', sans-serif;
                 font-weight: 700;
                 font-size: 1rem;
-                margin-top: 0.5rem;
+                margin-top: 1rem;
+                margin-bottom: 1rem;
                 transition: background 0.15s;
             }
+
+            .stButton > button p {
+    font-size: 1.25rem !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    color: white !important;
+}
             .stButton > button:hover {
                 background: #3a6ae0;
                 color: white;
@@ -126,14 +134,7 @@ def inject_css() -> None:
                 margin-top: 0.3rem;
             }
 
-            /* Results table wrapper */
-            .table-wrap {
-                background: #fff;
-                border: 1px solid #e8e8ec;
-                border-radius: 14px;
-                padding: 1rem;
-                margin-bottom: 1rem;
-            }
+           
 
             /* Download button */
             .stDownloadButton > button {
@@ -161,6 +162,51 @@ def inject_css() -> None:
                 font-size: 0.75rem;
                 font-weight: 600;
             }
+
+            /* Warning */
+[data-testid="stAlert"] {
+    border-radius: 12px;
+}
+
+[data-testid="stAlertContentWarning"] p {
+    color: #111;
+    font-weight: 500;
+}
+
+/* --- FIX UPLOADER Y LISTA DE ARCHIVOS --- */
+
+/* Forzar color oscuro para TODO el texto dentro del uploader (incluye la lista de archivos) */
+[data-testid="stFileUploader"] div,
+[data-testid="stFileUploader"] span,
+[data-testid="stFileUploader"] small {
+    color: #111111 !important;
+}
+
+/* Estilizar el botón nativo de "Browse files" */
+[data-testid="stFileUploaderDropzone"] button {
+    background-color: #111111 !important;
+    color: #ffffff !important; /* Este texto sí va en blanco */
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+/* Hover del botón de "Browse files" */
+[data-testid="stFileUploaderDropzone"] button:hover {
+    background-color: #4c7ef3 !important;
+    color: #ffffff !important;
+}
+
+/* Quitar el borde al enfocar */
+[data-testid="stFileUploaderDropzone"] button:focus:not(:focus-visible) {
+    color: #ffffff !important;
+}
+
+/* Asegurar que el ícono "X" para eliminar archivos se vea oscuro */
+[data-testid="stUploadedFile"] svg {
+    fill: #111111 !important;
+}
         </style>
         """,
         unsafe_allow_html=True,
@@ -177,7 +223,7 @@ def get_status(fields: dict) -> str:
     if len(missing) == len(CORE_FIELDS):
         return "FAILED"
     if missing:
-        return "REVIEW NEEDED"
+        return "NEEDS REVIEW"
     return "OK"
 
 
@@ -269,24 +315,51 @@ uploaded = st.file_uploader(
     label_visibility="collapsed",
 )
 
-process = st.button("Process invoices")
+if uploaded:
+    file_count = len(uploaded)
+    st.markdown(
+        f"""
+        <p style="margin: 0.75rem 0 0.25rem; color: #555; font-size: 0.95rem;">
+            {file_count} PDF{"s" if file_count != 1 else ""} selected
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+process = st.button(
+    "Process invoices",
+    use_container_width=True,
+    disabled=not uploaded,
+)
 
 if process:
-    if not uploaded:
-        st.warning("Upload at least one PDF first.")
-    else:
-        with st.spinner("Extracting fields…"):
-            records, xlsx = process_files(uploaded)
-            st.session_state.df = pd.DataFrame(records)
-            st.session_state.xlsx = xlsx
+    with st.spinner("Extracting fields…"):
+        records, xlsx = process_files(uploaded)
+        st.session_state.df = pd.DataFrame(records)
+        st.session_state.xlsx = xlsx
 
 # ── Results ───────────────────────────────────────────────────────────────────
 if st.session_state.df is not None:
     df = st.session_state.df
 
     ok = int((df["status"] == "OK").sum())
-    review = int((df["status"] == "REVIEW NEEDED").sum())
+    review = int((df["status"] == "NEEDS REVIEW").sum())
     failed = int((df["status"] == "FAILED").sum())
+
+    review_text = "needs manual review" if review == 1 else "need manual review"
+
+    st.markdown(
+        f"""
+<p style="margin: 0.5rem 0 1rem; color: #555; font-size: 0.95rem;">
+    Processed <strong>{len(df)}</strong> invoices —
+    <strong>{ok}</strong> complete,
+    <strong>{review}</strong> {review_text},
+    <strong>{failed}</strong> failed.
+</p>
+""",
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f"""
@@ -301,7 +374,7 @@ if st.session_state.df is not None:
             </div>
             <div class="metric-box">
                 <div class="metric-num" style="color:#d97706">{review}</div>
-                <div class="metric-lbl">Review needed</div>
+                <div class="metric-lbl">Needs review</div>
             </div>
             <div class="metric-box">
                 <div class="metric-num" style="color:#dc2626">{failed}</div>
@@ -312,9 +385,15 @@ if st.session_state.df is not None:
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="table-wrap">', unsafe_allow_html=True)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    status_order = {"NEEDS REVIEW": 0, "FAILED": 1, "OK": 2}
+
+    df_display = df.copy()
+    df_display["status_order"] = df_display["status"].map(status_order).fillna(99)
+    df_display = df_display.sort_values(
+        by=["status_order", "file"], ascending=[True, True]
+    ).drop(columns=["status_order"])
+
+    st.dataframe(df_display, use_container_width=True, hide_index=True)
 
     st.download_button(
         label="↓  Download Excel summary",
