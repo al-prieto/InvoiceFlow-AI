@@ -1,12 +1,4 @@
-"""
-Tests for parsing and date normalization in InvoiceFlow-AI.
-
-Run with: python -m pytest tests/ -v
-"""
-
 from src.parse import normalize_date, parse_fields, PATTERNS
-
-# ── normalize_date ────────────────────────────────────────────────────────────
 
 
 class TestNormalizeDate:
@@ -23,7 +15,6 @@ class TestNormalizeDate:
         assert normalize_date("March 15, 2024") == "2024-03-15"
 
     def test_us_slash(self):
-        # MM/DD/YYYY — day > 12 makes the format unambiguous
         assert normalize_date("03/15/2024") == "2024-03-15"
 
     def test_iso_passthrough(self):
@@ -33,12 +24,9 @@ class TestNormalizeDate:
         assert normalize_date(None) is None
 
     def test_unparseable_returns_original(self):
-        # Should return the raw value, not None, so callers know a value exists
         raw = "not-a-date"
         assert normalize_date(raw) == raw
 
-
-# ── parse_fields ──────────────────────────────────────────────────────────────
 
 SAMPLE_INVOICE_TEXT = """
 INVOICE NUMBER: INV-2024-001
@@ -57,25 +45,22 @@ AMOUNT DUE: 500.00
 
 class TestParseFields:
     def test_extracts_invoice_number(self):
-        result = parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)
-        assert result["invoice_number"] == "INV-2024-001"
+        assert (
+            parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)["invoice_number"]
+            == "INV-2024-001"
+        )
 
     def test_extracts_and_normalises_date(self):
-        result = parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)
-        assert result["date"] == "2024-03-15"
+        assert parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)["date"] == "2024-03-15"
 
     def test_extracts_total_due(self):
-        result = parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)
-        assert result["total_due"] == "1,250.00"
+        assert parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)["total_due"] == "1,250.00"
 
     def test_extracts_subtotal(self):
-        result = parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)
-        assert result["subtotal"] == "1,150.00"
+        assert parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)["subtotal"] == "1,150.00"
 
     def test_missing_field_is_none(self):
-        result = parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)
-        assert result["due_date"] is None
+        assert parse_fields(SAMPLE_INVOICE_TEXT, PATTERNS)["due_date"] is None
 
     def test_us_date_format(self):
-        result = parse_fields(SAMPLE_INVOICE_US_DATE, PATTERNS)
-        assert result["date"] == "2024-03-15"
+        assert parse_fields(SAMPLE_INVOICE_US_DATE, PATTERNS)["date"] == "2024-03-15"

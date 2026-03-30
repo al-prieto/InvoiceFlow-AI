@@ -1,29 +1,9 @@
 """
 Core pipeline logic shared between app.py (CLI) and streamlit_app.py (UI).
-
-Previously duplicated across both entry points with subtle differences
-(e.g. "source_file" vs "file" key). Centralising here ensures a single
-source of truth for status logic, field schema, and record construction.
 """
 
 CORE_FIELDS = ("invoice_number", "date", "total_due")
 OPTIONAL_FIELDS = ("due_date", "subtotal", "sales_tax", "shipping_handling")
-
-# Canonical record keys — both CLI and UI must use this schema.
-RECORD_KEYS = (
-    "file",
-    "invoice_number",
-    "date",
-    "due_date",
-    "subtotal",
-    "sales_tax",
-    "shipping",
-    "total_due",
-    "status",
-    "notes",
-    "missing_core",
-    "missing_optional",
-)
 
 
 def get_missing_fields(fields: dict, field_names: tuple) -> list[str]:
@@ -54,7 +34,7 @@ def build_record(source_file: str, fields: dict, status: str, notes: str = "") -
         "due_date": fields.get("due_date"),
         "subtotal": fields.get("subtotal"),
         "sales_tax": fields.get("sales_tax"),
-        "shipping": fields.get("shipping_handling"),
+        "shipping_handling": fields.get("shipping_handling"),
         "total_due": fields.get("total_due"),
         "status": status,
         "notes": notes,
@@ -72,10 +52,32 @@ def build_error_record(source_file: str, error: Exception) -> dict:
         "due_date": None,
         "subtotal": None,
         "sales_tax": None,
-        "shipping": None,
+        "shipping_handling": None,
         "total_due": None,
         "status": "FAILED",
         "notes": "",
         "missing_core": f"processing_error: {error}",
         "missing_optional": "",
     }
+
+
+def recalculate_after_correction(record: dict) -> dict:
+    """
+    After a manual edit, recompute status and the two missing-field lists.
+
+    Record keys match CORE_FIELDS and OPTIONAL_FIELDS exactly, so the record
+    can be passed directly without key remapping.
+    Returns the mutated record for convenience.
+    """
+    core_snapshot = {k: record.get(k) for k in CORE_FIELDS}
+    opt_snapshot = {k: record.get(k) for k in OPTIONAL_FIELDS}
+
+    missing_core = get_missing_fields(core_snapshot, CORE_FIELDS)
+    missing_opt = get_missing_fields(opt_snapshot, OPTIONAL_FIELDS)
+
+    new_status = get_status(core_snapshot)
+    # REVIEWED is auditable: means a human confirmed this is complete
+    record["status"] = "REVIEWED" if new_status == "OK" else new_status
+    record["missing_core"] = ", ".join(missing_core) if missing_core else ""
+    record["missing_optional"] = ", ".join(missing_opt) if missing_opt else ""
+    return record

@@ -1,7 +1,3 @@
-"""
-Tests for src.validate.
-"""
-
 from src.validate import validate_fields
 
 
